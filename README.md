@@ -137,7 +137,9 @@ The setup incorporates the following key decisions:
    kubeadm init \
      --skip-phases=addon/kube-proxy \
      --control-plane-endpoint "<LOAD_BALANCER_DNS>:<LOAD_BALANCER_PORT>" \
-     --upload-certs
+     --upload-certs \
+     --pod-network-cidr "10.248.0.0/16" \
+     --v=5
    ```
 
 ### 4. Install and Configure Cilium
