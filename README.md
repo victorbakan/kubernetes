@@ -160,16 +160,13 @@ The setup incorporates the following key decisions:
 
 3. Install Cilium with custom options:
    ```bash
-   helm install cilium cilium/cilium --version 1.16.5 \
-     --namespace kube-system
-
-   cilium install \
-     --config tunnel=disabled \
-     --config enable-bpf-masquerade=true \
-     --config auto-direct-node-routes=true \
-     --config kube-proxy-replacement=strict \
-     --cluster-name k8s-cilium-rnd-cluster \
-     --cluster-id 1
+   helm install cilium cilium/cilium --version 1.16.5 -n kube-system --create-namespace \
+    --set tunnel=disabled \
+    --set enableBpfMasquerade=true \
+    --set autoDirectNodeRoutes=true \
+    --set kubeProxyReplacement=strict \
+    --set cluster.name=k8s-cilium-rnd-cluster \
+    --set cluster.id=1
    ```
 
 ---
