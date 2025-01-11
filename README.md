@@ -1,39 +1,42 @@
 # README: Highly Available Kubernetes Cluster Setup
 
 ## Overview
-This document describes the manual setup process for a Highly Available Kubernetes cluster suitable for production environments. The setup emphasizes simplicity and performance.
+This document provides a comprehensive, manual guide to setting up a Highly Available Kubernetes cluster optimized for production. The setup emphasizes simplicity, reliability, and performance.
 
-### Key Features:
-- **etcd cluster**: Simplifies Kubernetes cluster management.
-- **CNI and Data Plane**: Utilizes Cilium with eBPF.
-- **Kube-Proxy Replacement**: Replaced with Cilium.
-- **Native Routing**: Operates on L3 level without overlay.
+### Key Features
+- **etcd Cluster**: Manages cluster state with high reliability.
+- **CNI and Data Plane**: Leverages Cilium with eBPF for efficient networking.
+- **Kube-Proxy Replacement**: Cilium replaces kube-proxy for better performance.
+- **Native Routing**: Operates on L3 routing without overlay networks.
 
 ---
 
 ## Prerequisites
 
-1. **Hardware/VM Requirements:**
-   - **Control Plane Machines**: 3
-   - **Worker Machines**: 2
-   - Single L2 broadcast domain (LAN) between all machines.
-2. **Operating System:**
-   - Linux kernel version >= 6.0 to enable eBPF and Cilium features.
-3. **Example Environment:**
-   - Cloud Provider: Hetzner Cloud.
-   - Private Network: `172.16.80.0/24`.
-   - Machine Specifications:
-     - Type: CPX21
-     - vCPU: 3
-     - RAM: 4GB
-     - Disk: 80GB SSD
-     - OS: Debian 12 (kernel 6.1)
-     - CRI: containerd
-     - Kubernetes v1.32
-     - Cilium v1.16.5
-   - Network Configuration:
-     - TCP Congestion Control: BBR
-     - No network overlay; native routing.
+### 1. Infrastructure Requirements
+- **Control Plane Nodes**: 3
+- **Worker Nodes**: 2
+- **Networking**: A single L2 broadcast domain (LAN) between all nodes.
+
+### 2. Operating System
+- Linux kernel version >= 6.0 (required for eBPF and advanced Cilium features).
+
+### 3. Example Environment
+- **Cloud Provider**: Hetzner Cloud
+- **Private Network**: `172.16.80.0/24`
+- **Machine Specifications**:
+  - Type: CPX21
+  - vCPU: 3
+  - RAM: 4GB
+  - Disk: 80GB SSD
+  - OS: Debian 12 (kernel 6.1)
+- **Software Versions**:
+  - Container Runtime: containerd
+  - Kubernetes: v1.32
+  - Cilium: v1.16.5
+- **Network Configuration**:
+  - TCP Congestion Control: BBR
+  - No network overlay; native routing is used.
 
 ---
 
@@ -41,23 +44,23 @@ This document describes the manual setup process for a Highly Available Kubernet
 
 ### 1. Configure Container Runtime Interface (CRI)
 
-#### Install containerd:
+#### Install containerd
 ```bash
 apt-get install containerd
 ```
 
-#### Generate Default Configuration:
+#### Generate Default Configuration
 ```bash
 containerd config default > /etc/containerd/config.toml
 ```
 
-#### Update Configuration:
-Ensure `systemd` is set as the cgroup driver:
+#### Update Configuration
+Set `systemd` as the cgroup driver:
 ```toml
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
   SystemdCgroup = true
 ```
-Set sandbox image:
+Set the sandbox image:
 ```toml
 sandbox_image = "registry.k8s.io/pause:3.10"
 ```
@@ -66,7 +69,7 @@ Restart containerd:
 systemctl restart containerd.service
 ```
 
-#### Configure crictl:
+#### Configure crictl
 ```bash
 echo "runtime-endpoint: unix:///run/containerd/containerd.sock" > /etc/crictl.yaml
 ```
@@ -75,8 +78,8 @@ echo "runtime-endpoint: unix:///run/containerd/containerd.sock" > /etc/crictl.ya
 
 ### 2. OS Kernel and Networking Configuration
 
-#### Update `sysctl` Settings:
-Add the following to `/etc/sysctl.conf`:
+#### Update Kernel Parameters
+Append the following settings to `/etc/sysctl.conf`:
 ```bash
 net.core.somaxconn = 65500
 net.core.netdev_max_backlog = 20000
@@ -99,12 +102,13 @@ net.ipv4.tcp_congestion_control = bbr
 net.core.default_qdisc = fq
 fs.file-max = 4194304
 ```
-Apply changes:
+Apply the changes:
 ```bash
 sysctl -p
 ```
 
-#### Load BBR Module:
+#### Load BBR Module
+Enable and persist TCP BBR:
 ```bash
 modprobe tcp_bbr
 echo "tcp_bbr" > /etc/modules-load.d/bbr.conf
@@ -114,8 +118,8 @@ echo "tcp_bbr" > /etc/modules-load.d/bbr.conf
 
 ### 3. Kubernetes Control Plane Setup
 
-#### Install Kubernetes Tools:
-Follow the [official Kubernetes documentation](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/high-availability/):
+#### Install Kubernetes Tools
+Install the required tools:
 ```bash
 apt-get install -y apt-transport-https ca-certificates curl gpg
 curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.32/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
@@ -125,16 +129,15 @@ apt-get install -y kubelet kubeadm kubectl
 apt-mark hold kubelet kubeadm kubectl
 ```
 
-#### Initialize Kubernetes:
+#### Initialize Kubernetes Cluster
 Turn off swap:
 ```bash
 swapoff -a
 ```
-Run `kubeadm init`:
+Run the `kubeadm init` command:
 ```bash
 kubeadm init \
-  --pod-network-cidr "10.248.0.0/16" \
-  --control-plane-endpoint "k8s-lb-etcd-apiserver.bluecuttlefish.com:6443" \
+  --control-plane-endpoint "<API_SERVER_IP>:<API_SERVER_PORT>" \
   --upload-certs \
   --v=5
 ```
@@ -143,7 +146,8 @@ kubeadm init \
 
 ### 4. Cilium Installation
 
-#### Install Cilium CLI:
+#### Install Cilium CLI
+Download and install the CLI:
 ```bash
 wget https://github.com/cilium/cilium-cli/releases/download/v0.16.23/cilium-linux-amd64.tar.gz
 tar -zxvf cilium-linux-amd64.tar.gz
@@ -151,16 +155,21 @@ mv cilium /usr/local/bin/
 cilium version
 ```
 
-#### Install Helm and Add Cilium Repository:
+#### Install Helm and Add Cilium Repository
+Install Helm:
 ```bash
 wget https://get.helm.sh/helm-v3.16.4-linux-amd64.tar.gz
 tar -zxvf helm-v3.16.4-linux-amd64.tar.gz
 mv linux-amd64/helm /usr/local/bin/
 helm version
+```
+Add the Cilium Helm repository:
+```bash
 helm repo add cilium https://helm.cilium.io/
 ```
 
-#### Install Cilium:
+#### Deploy Cilium
+Install Cilium using Helm:
 ```bash
 helm install cilium cilium/cilium --version 1.16.5 \
   --namespace kube-system \
@@ -175,29 +184,23 @@ helm install cilium cilium/cilium --version 1.16.5 \
 
 ### 5. Validate and Finalize Setup
 
-#### Check Node and Pod Status:
+#### Verify Node and Pod Status
+Check the cluster state:
 ```bash
+kubectl get nodes
 kubectl get pods --all-namespaces
 ```
 
-#### Replace kube-proxy with Cilium:
+#### Replace kube-proxy with Cilium
+Remove kube-proxy:
 ```bash
 kubectl -n kube-system delete ds kube-proxy
 kubectl -n kube-system delete cm kube-proxy
 iptables-save | grep -v KUBE | iptables-restore
 ```
 
-#### Update Cilium Configuration:
-```bash
-helm upgrade cilium cilium/cilium \
-  --version 1.16.5 \
-  --namespace kube-system \
-  --set kubeProxyReplacement=true \
-  --set k8sServiceHost=${API_SERVER_IP} \
-  --set k8sServicePort=${API_SERVER_PORT}
-```
-
-Verify configuration:
+#### Validate Cilium Configuration
+Confirm that Cilium is properly configured:
 ```bash
 kubectl -n kube-system exec ds/cilium -- cilium-dbg status | grep KubeProxyReplacement
 kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose
@@ -205,6 +208,12 @@ kubectl -n kube-system exec ds/cilium -- cilium-dbg status --verbose
 
 ---
 
-## Conclusion
-Your Kubernetes cluster with Cilium as the CNI and proxy replacement is now set up and optimized for production use. For additional configurations and scaling, refer to the official documentation.
+## Additional Resources
+- [Kubernetes Official Documentation](https://kubernetes.io/docs/)
+- [Cilium Documentation](https://docs.cilium.io/en/stable/)
+- [Kubeadm HA Setup Guide](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/high-availability/)
 
+---
+
+## Conclusion
+Your Kubernetes cluster with Cilium as the CNI and proxy replacement is now fully set up and optimized for production use. For further customization or scaling, refer to the official documentation linked above.
